@@ -18,23 +18,123 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 API_PATH = ROOT / "custom_components" / "dreame_airpurifier" / "api.py"
 
-
-def load_api_client():
-    spec = importlib.util.spec_from_file_location("dreame_airpurifier_api", API_PATH)
-    if spec is None or spec.loader is None:
-        print(f"Could not load {API_PATH}")
-        raise SystemExit(2)
-    api_module = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(api_module)
-    except ModuleNotFoundError as ex:
-        if ex.name == "requests":
-            print("Missing Python package: requests")
-            print("Install it with: python3 -m pip install requests")
-            print("Or run without installing: uv run --with requests python scripts/probe_property.py ...")
-            raise SystemExit(2)
-        raise
-    return api_module.DreameCloudAPI
+spec = importlib.util.spec_from_file_location("dreame_airpurifier_api", API_PATH)
+if spec is None or spec.loader is None:
+    print(f"Could not load {API_PATH}")
+    sys.exit(2)
+api_module = importlib.util.module_from_spec(spec)
+try:
+    spec.loader.exec_module(api_module)
+except ModuleNotFoundError as ex:
+    if ex.name == "requests":
+        print("Missing Python package: requests")
+        print("Install it with: python3 -m pip install requests")
+        print("Or run without installing: uv run --with requests python scripts/probe_property.py ...")
+        sys.exit(2)
+    raise
+DreameCloudAPI = api_module.DreameCloudAPI
+CANDIDATE_TOGGLES = getattr(
+    api_module,
+    "EXPERIMENTAL_TOGGLES",
+    [
+        {"id": 1, "name": "Toggle 1", "siid": 2, "piid": 6},
+        {"id": 4, "name": "Toggle 4", "siid": 7, "piid": 7},
+        {"id": 5, "name": "Toggle 5", "siid": 2, "piid": 6},
+    ],
+)
+CANDIDATE_TOGGLE_POLL_BATCHES = getattr(
+    api_module,
+    "EXPERIMENTAL_TOGGLE_POLL_BATCHES",
+    [[toggle] for toggle in CANDIDATE_TOGGLES],
+)
+CANDIDATE_TOGGLE_BY_ID = {toggle["id"]: toggle for toggle in CANDIDATE_TOGGLES}
+CANDIDATE_TOGGLE_IDS = sorted(CANDIDATE_TOGGLE_BY_ID)
+PAI_CANDIDATES = [
+    {
+        "name": "filter_life_percent",
+        "siid": 4,
+        "piid": 1,
+        "type": "read-only",
+        "comment": "Existing app percentage, for example around 80%.",
+    },
+    {
+        "name": "filter_days_left",
+        "siid": 4,
+        "piid": 2,
+        "type": "read-only",
+        "comment": "Expected High Efficiency Composite Filter days-left value, for example 292.",
+    },
+    {
+        "name": "device_location",
+        "siid": 6,
+        "piid": 3,
+        "type": "read-only",
+        "comment": "User-set device location, for example Munich.",
+    },
+    {
+        "name": "negative_ion_uvc",
+        "siid": 6,
+        "piid": 7,
+        "type": "toggle",
+        "comment": "Confirmed Dreamehome Negative Ion + UVC switch.",
+    },
+    {
+        "name": "fan_percent_read_only",
+        "siid": 2,
+        "piid": 5,
+        "type": "known",
+        "comment": "Read-only fan percentage on AP10; included because comparable MIOT layouts put anion nearby.",
+    },
+    {
+        "name": "standard_anion_slot_conflict",
+        "siid": 2,
+        "piid": 6,
+        "type": "known",
+        "comment": "Comparable purifiers often use piid 5/6 for anion, but AP10 2/6 is LED color.",
+    },
+    {
+        "name": "standard_uv_slot_conflict",
+        "siid": 2,
+        "piid": 7,
+        "type": "known",
+        "comment": "Comparable purifiers often place UV next to anion, but AP10 2/7 is keypress tone.",
+    },
+    {
+        "name": "negative_ion_uv_candidate_7_5",
+        "siid": 7,
+        "piid": 5,
+        "type": "candidate-toggle",
+        "comment": "Adjacent to the remaining service-7 candidate; read first, then compare with app changes.",
+    },
+    {
+        "name": "negative_ion_uv_candidate_7_6",
+        "siid": 7,
+        "piid": 6,
+        "type": "candidate-toggle",
+        "comment": "Adjacent to the remaining service-7 candidate; read first, then compare with app changes.",
+    },
+    {
+        "name": "negative_ion_uv_candidate_7_7",
+        "siid": 7,
+        "piid": 7,
+        "type": "candidate-toggle",
+        "comment": "Current remaining experimental Toggle 4.",
+    },
+    {
+        "name": "device_setting_candidate_6_9",
+        "siid": 6,
+        "piid": 9,
+        "type": "candidate-toggle",
+        "comment": "Nearby device-settings slot after timer.",
+    },
+    {
+        "name": "device_setting_candidate_6_10",
+        "siid": 6,
+        "piid": 10,
+        "type": "candidate-toggle",
+        "comment": "Nearby device-settings slot after timer.",
+    },
+]
 
 
 def parse_value(raw: str):
@@ -47,6 +147,13 @@ def parse_value(raw: str):
         return int(raw)
     except ValueError:
         return raw
+
+
+def read_candidate_toggles(api: DreameCloudAPI, did: str, host: str | None) -> dict:
+    values = {}
+    for batch in CANDIDATE_TOGGLE_POLL_BATCHES:
+        values.update(api.get_properties(did, batch, host))
+    return values
 
 
 def parse_range(raw: str) -> tuple[int, int]:
@@ -145,6 +252,35 @@ def main() -> int:
         help="Write 0 when the current value is truthy, otherwise write 1.",
     )
     parser.add_argument(
+        "--list-toggles",
+        action="store_true",
+        help="List numbered candidate toggles and exit.",
+    )
+    parser.add_argument(
+        "--toggle-id",
+        type=int,
+        choices=CANDIDATE_TOGGLE_IDS,
+        metavar="N",
+        help="Use a numbered candidate toggle instead of --siid/--piid.",
+    )
+    parser.add_argument(
+        "--read-toggle-id",
+        type=int,
+        choices=CANDIDATE_TOGGLE_IDS,
+        metavar="N",
+        help="Read a numbered candidate toggle without writing.",
+    )
+    parser.add_argument(
+        "--read-all-toggles",
+        action="store_true",
+        help="Read all numbered candidate toggles without writing.",
+    )
+    parser.add_argument(
+        "--read-pai-candidates",
+        action="store_true",
+        help="Read focused candidates for filter days-left and Negative Ion + UVC probing.",
+    )
+    parser.add_argument(
         "--trace-app-change",
         action="store_true",
         help="Read a property range, wait for you to change the Dreamehome app setting, then print diffs.",
@@ -167,6 +303,29 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.list_toggles:
+        for toggle_id in CANDIDATE_TOGGLE_IDS:
+            toggle = CANDIDATE_TOGGLE_BY_ID[toggle_id]
+            print(f"{toggle_id}: {toggle['name']} siid={toggle['siid']} piid={toggle['piid']}")
+        return 0
+
+    selected_modes = sum(
+        1
+        for selected in (args.toggle_id, args.read_toggle_id, args.read_all_toggles)
+        if selected is not None and selected is not False
+    )
+    if selected_modes > 1:
+        print("Use only one of --toggle-id, --read-toggle-id, or --read-all-toggles.")
+        return 2
+
+    if args.toggle_id is not None or args.read_toggle_id is not None:
+        toggle_id = args.toggle_id or args.read_toggle_id
+        toggle = CANDIDATE_TOGGLE_BY_ID[toggle_id]
+        args.siid = toggle["siid"]
+        args.piid = toggle["piid"]
+        if args.toggle_id is not None:
+            args.toggle = args.toggle or args.value is None
+
     if not args.username:
         args.username = input("Dreame username: ").strip()
     if not args.password:
@@ -175,7 +334,6 @@ def main() -> int:
         print("Missing Dreame username/password.")
         return 2
 
-    DreameCloudAPI = load_api_client()
     api = DreameCloudAPI(args.username, args.password, args.country)
     if not api.login():
         print("Login failed.")
@@ -196,6 +354,37 @@ def main() -> int:
         host = host or device.get("bindDomain")
         name = device.get("customName") or device.get("deviceInfo", {}).get("displayName")
         print(f"Using device: {name or device.get('model', 'unknown')} ({device.get('model')})")
+
+    if args.read_all_toggles:
+        values = read_candidate_toggles(api, did, host)
+        for toggle_id in CANDIDATE_TOGGLE_IDS:
+            toggle = CANDIDATE_TOGGLE_BY_ID[toggle_id]
+            value = values.get((toggle["siid"], toggle["piid"]))
+            print(
+                f"{toggle_id}: {toggle['name']} siid={toggle['siid']} "
+                f"piid={toggle['piid']} value={value!r}"
+            )
+        return 0
+
+    if args.read_pai_candidates:
+        params = [
+            {"did": did, "siid": candidate["siid"], "piid": candidate["piid"]}
+            for candidate in PAI_CANDIDATES
+        ]
+        result = api.send_command(did, "get_properties", params, host)
+        values = {}
+        for item in result or []:
+            if isinstance(item, dict):
+                values[(item.get("siid"), item.get("piid"))] = item
+        for candidate in PAI_CANDIDATES:
+            item = values.get((candidate["siid"], candidate["piid"]), {})
+            print(
+                f"{candidate['name']}: siid={candidate['siid']} "
+                f"piid={candidate['piid']} type={candidate['type']} "
+                f"code={item.get('code')!r} value={item.get('value')!r} "
+                f"comment={candidate['comment']}"
+            )
+        return 0
 
     if args.trace_app_change:
         try:
@@ -229,11 +418,20 @@ def main() -> int:
         return 0
 
     if args.siid is None or args.piid is None:
-        print("Either --scan-piids, --trace-app-change, or both --siid and --piid are required.")
+        print("Either --toggle-id, --scan-piids, --read-pai-candidates, --trace-app-change, or both --siid and --piid are required.")
         return 2
 
     prop = {"siid": args.siid, "piid": args.piid}
+    if args.toggle_id is not None or args.read_toggle_id is not None:
+        toggle_index = args.toggle_id or args.read_toggle_id
+        toggle = CANDIDATE_TOGGLE_BY_ID[toggle_index]
+        print(
+            f"{toggle_index}: {toggle['name']} "
+            f"siid={toggle['siid']} piid={toggle['piid']}"
+        )
     before = api.get_properties(did, [prop], host).get((args.siid, args.piid))
+    if before is None and (args.toggle_id is not None or args.read_toggle_id is not None):
+        before = read_candidate_toggles(api, did, host).get((args.siid, args.piid))
     print(f"Before siid={args.siid} piid={args.piid}: {before!r}")
 
     if args.value is None and not args.toggle:
@@ -249,6 +447,8 @@ def main() -> int:
     if args.delay > 0:
         time.sleep(args.delay)
     after = api.get_properties(did, [prop], host).get((args.siid, args.piid))
+    if after is None and args.toggle_id is not None:
+        after = read_candidate_toggles(api, did, host).get((args.siid, args.piid))
     print(f"After siid={args.siid} piid={args.piid}: {after!r}")
     return 0 if ok else 1
 

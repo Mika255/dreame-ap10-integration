@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DreameAirPurifier, MODE_NAME_TO_VALUE
 from .const import DOMAIN, PRESET_MODES
+from .entity import dreame_device_info
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -36,13 +37,7 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._purifier.unique_id)},
-            "name": self._purifier.name,
-            "manufacturer": "Dreame",
-            "model": self._purifier.model,
-            "sw_version": "0.2.0",
-        }
+        return dreame_device_info(self._purifier)
 
     @property
     def is_on(self) -> bool:
@@ -66,6 +61,7 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "fan_speed_level": self._purifier.fan_speed,
+            "light_control": self._purifier.light_control,
         }
 
     async def async_turn_on(self, percentage=None, preset_mode=None, **kwargs) -> None:
