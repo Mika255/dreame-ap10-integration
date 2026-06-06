@@ -18,6 +18,7 @@ FIRMWARE_VERSION_KEYS = (
     "fwVersion",
     "fw_version",
 )
+STALE_SWITCH_READ_GRACE_SECONDS = 15
 
 # === MiOT Property Map for dreame.airp.u2507 (Dreame AP10) ===
 # Verified by live testing and Dreame-AP10-API-Analysis.md.
@@ -347,6 +348,7 @@ class DreameAirPurifier:
         self._voice_interaction = False
         self._timer_hours = 0
         self._available = True
+        self._pending_switch_properties = {}
 
     @property
     def unique_id(self): return self._mac.replace(":", "").lower() or self._did
@@ -409,6 +411,45 @@ class DreameAirPurifier:
     @property
     def timer_hours(self): return self._timer_hours
 
+    def _remember_pending_switch_property(self, prop: dict, value: int) -> None:
+        self._pending_switch_properties[(prop["siid"], prop["piid"])] = (
+            value,
+            time.monotonic() + STALE_SWITCH_READ_GRACE_SECONDS,
+        )
+
+    def _property_values_match(self, value, pending_value) -> bool:
+        if value == pending_value:
+            return True
+        parsed_value = _as_int(value)
+        parsed_pending_value = _as_int(pending_value)
+        return parsed_value is not None and parsed_value == parsed_pending_value
+
+    def _switch_property_value(self, values: dict, prop: dict, default=None):
+        key = (prop["siid"], prop["piid"])
+        has_value = key in values
+        value = values.get(key, default)
+        pending = self._pending_switch_properties.get(key)
+        if pending is None:
+            return value
+        pending_value, expires_at = pending
+        if time.monotonic() >= expires_at:
+            self._pending_switch_properties.pop(key, None)
+            return value
+        if not has_value:
+            return pending_value
+        if self._property_values_match(value, pending_value):
+            self._pending_switch_properties.pop(key, None)
+            return value
+        return pending_value
+
+    def _set_switch_property(self, prop: dict, enabled: bool, attr: str) -> bool:
+        value = 1 if enabled else 0
+        if not self._api.set_property(self._did, prop["siid"], prop["piid"], value, self._host):
+            return False
+        setattr(self, attr, bool(enabled))
+        self._remember_pending_switch_property(prop, value)
+        return True
+
     def update(self) -> bool:
         all_values = {}
         for batch in POLL_BATCHES:
@@ -426,16 +467,44 @@ class DreameAirPurifier:
         self._fan_speed = _as_int(all_values.get((2, 4)), self._fan_speed)
         self._voice_interaction_volume = _as_int(all_values.get((2, 5)), self._voice_interaction_volume)
         self._light_control = _as_int(all_values.get((2, 6)), self._light_control)
-        self._keypress_tone = _as_bool(all_values.get((2, 7)), self._keypress_tone)
+        self._keypress_tone = _as_bool(
+            self._switch_property_value(
+                all_values,
+                PROP_KEYPRESS_TONE,
+                self._keypress_tone,
+            ),
+            self._keypress_tone,
+        )
         self._aq_level = _as_int(all_values.get((3, 4)), self._aq_level)
         self._pm25 = _as_int(all_values.get((3, 5)), self._pm25)
         self._filter_life = _as_int(all_values.get((4, 1)), self._filter_life)
         self._filter_days_left = _as_int(all_values.get((4, 2)), self._filter_days_left)
         self._filter_used = _as_int(all_values.get((4, 3)), self._filter_used)
         self._device_location = all_values.get((6, 3), self._device_location)
-        self._child_lock = _as_bool(all_values.get((6, 5)), self._child_lock)
-        self._play_mode = _as_bool(all_values.get((6, 6)), self._play_mode)
-        self._voice_interaction = _as_bool(all_values.get((6, 7)), self._voice_interaction)
+        self._child_lock = _as_bool(
+            self._switch_property_value(
+                all_values,
+                PROP_CHILD_LOCK,
+                self._child_lock,
+            ),
+            self._child_lock,
+        )
+        self._play_mode = _as_bool(
+            self._switch_property_value(
+                all_values,
+                PROP_PLAY_MODE,
+                self._play_mode,
+            ),
+            self._play_mode,
+        )
+        self._voice_interaction = _as_bool(
+            self._switch_property_value(
+                all_values,
+                PROP_VOICE_INTERACTION,
+                self._voice_interaction,
+            ),
+            self._voice_interaction,
+        )
         self._timer_hours = _as_int(all_values.get((6, 8)), self._timer_hours)
         return True
 
@@ -479,16 +548,16 @@ class DreameAirPurifier:
         return self._api.set_property(self._did, 2, 5, value, self._host)
 
     def set_keypress_tone(self, enabled: bool) -> bool:
-        return self._api.set_property(self._did, 2, 7, 1 if enabled else 0, self._host)
+        return self._set_switch_property(PROP_KEYPRESS_TONE, enabled, "_keypress_tone")
 
     def set_child_lock(self, enabled: bool) -> bool:
-        return self._api.set_property(self._did, 6, 5, 1 if enabled else 0, self._host)
+        return self._set_switch_property(PROP_CHILD_LOCK, enabled, "_child_lock")
 
     def set_play_mode(self, enabled: bool) -> bool:
-        return self._api.set_property(self._did, 6, 6, 1 if enabled else 0, self._host)
+        return self._set_switch_property(PROP_PLAY_MODE, enabled, "_play_mode")
 
     def set_voice_interaction(self, enabled: bool) -> bool:
-        return self._api.set_property(self._did, 6, 7, 1 if enabled else 0, self._host)
+        return self._set_switch_property(PROP_VOICE_INTERACTION, enabled, "_voice_interaction")
 
     def set_timer(self, hours: int) -> bool:
         try:
