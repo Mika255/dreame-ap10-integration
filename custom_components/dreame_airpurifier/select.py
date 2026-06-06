@@ -6,6 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import DreameAirPurifier, LIGHT_CONTROL_OPTIONS, VOICE_INTERACTION_VOLUME_OPTIONS
 from .const import DOMAIN
+from .entity import dreame_device_info
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
@@ -23,7 +24,7 @@ class DreameBaseSelect(CoordinatorEntity, SelectEntity):
         self._attr_name = name
     @property
     def device_info(self):
-        return {"identifiers": {(DOMAIN, self._purifier.unique_id)}, "name": self._purifier.name, "manufacturer": "Dreame", "model": self._purifier.model}
+        return dreame_device_info(self._purifier)
     @property
     def available(self): return self._purifier.available
 

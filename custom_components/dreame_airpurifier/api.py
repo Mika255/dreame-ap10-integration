@@ -1,5 +1,6 @@
 """Dreame Air Purifier Cloud API Client."""
 import hashlib
+import json
 import logging
 import requests
 import time
@@ -11,6 +12,12 @@ DREAME_USER_AGENT = "Dreame_Smarthome/2.1.9 (iPhone; iOS 18.4.1; Scale/3.00)"
 DREAME_AUTH_BASIC = "Basic ZHJlYW1lX2FwcHYxOkFQXmR2QHpAU1FZVnhOODg="
 DREAME_TENANT_ID = "000000"
 DREAME_RLC = "1c80b3787b2266776bcdc481f37d8fa42ba10a30af81a6df-1"
+FIRMWARE_VERSION_KEYS = (
+    "firmwareVersion",
+    "firmware_version",
+    "fwVersion",
+    "fw_version",
+)
 
 # === MiOT Property Map for dreame.airp.u2507 (Dreame AP10) ===
 # VERIFIED by live testing 2025-02-15
@@ -65,6 +72,28 @@ TIMER_MAX_HOURS = 12
 
 # Power: MUST use toggle action (set_properties times out on siid 2 piid 1)
 ACTION_TOGGLE_POWER = {"siid": 2, "aiid": 3}
+
+
+def _as_dict(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
+def _extract_firmware_version(device_info: dict) -> str | None:
+    for source in (device_info, _as_dict(device_info.get("deviceInfo"))):
+        for key in FIRMWARE_VERSION_KEYS:
+            version = source.get(key)
+            if version not in (None, ""):
+                return str(version)
+    return None
 
 
 class DreameCloudAPI:
@@ -214,11 +243,13 @@ class DreameAirPurifier:
 
     def __init__(self, api: DreameCloudAPI, device_info: dict):
         self._api = api
+        device_details = _as_dict(device_info.get("deviceInfo"))
         self._did = str(device_info["did"])
         self._host = device_info.get("bindDomain")
         self._model = device_info.get("model", "unknown")
         self._mac = device_info.get("mac", "")
-        self._name = device_info.get("customName") or device_info.get("deviceInfo", {}).get("displayName", "Dreame Air Purifier")
+        self._name = device_info.get("customName") or device_details.get("displayName", "Dreame Air Purifier")
+        self._firmware_version = _extract_firmware_version(device_info)
         self._power = False
         self._mode = MODE_AI_PURIFY
         self._fan_speed = 0
@@ -238,7 +269,7 @@ class DreameAirPurifier:
         self._available = True
 
     @property
-    def unique_id(self): return self._mac.replace(":", "").lower()
+    def unique_id(self): return self._mac.replace(":", "").lower() or self._did
     @property
     def name(self): return self._name
     @property
@@ -247,6 +278,8 @@ class DreameAirPurifier:
     def device_id(self): return self._did
     @property
     def mac(self): return self._mac
+    @property
+    def firmware_version(self): return self._firmware_version
     @property
     def available(self): return self._available
     @property

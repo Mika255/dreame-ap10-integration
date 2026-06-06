@@ -7,6 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import DreameAirPurifier, TIMER_MAX_HOURS, TIMER_MIN_HOURS
 from .const import DOMAIN
+from .entity import dreame_device_info
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
@@ -26,7 +27,7 @@ class DreameTimerNumber(CoordinatorEntity, NumberEntity):
         self._attr_unique_id = f"{purifier.unique_id}_timer"
     @property
     def device_info(self):
-        return {"identifiers": {(DOMAIN, self._purifier.unique_id)}, "name": self._purifier.name, "manufacturer": "Dreame", "model": self._purifier.model}
+        return dreame_device_info(self._purifier)
     @property
     def available(self): return self._purifier.available
     @property

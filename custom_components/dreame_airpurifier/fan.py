@@ -1,5 +1,4 @@
 """Fan platform for Dreame Air Purifier."""
-import logging
 from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
@@ -10,8 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DreameAirPurifier, MODE_NAME_TO_VALUE
 from .const import DOMAIN, PRESET_MODES
-
-_LOGGER = logging.getLogger(__name__)
+from .entity import dreame_device_info
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -39,13 +37,7 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._purifier.unique_id)},
-            "name": self._purifier.name,
-            "manufacturer": "Dreame",
-            "model": self._purifier.model,
-            "sw_version": "0.2.0",
-        }
+        return dreame_device_info(self._purifier)
 
     @property
     def is_on(self) -> bool:
