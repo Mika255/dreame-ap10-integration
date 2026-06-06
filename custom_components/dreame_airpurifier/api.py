@@ -114,6 +114,28 @@ def _as_dict(value) -> dict:
     return {}
 
 
+def _as_int(value, default: int | None = None) -> int | None:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_bool(value, default: bool = False) -> bool:
+    parsed = _as_int(value)
+    if parsed is not None:
+        return parsed != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "on", "yes"}:
+            return True
+        if lowered in {"false", "off", "no"}:
+            return False
+    return default
+
+
 def _extract_firmware_version(device_info: dict) -> str | None:
     for source in (device_info, _as_dict(device_info.get("deviceInfo"))):
         for key in FIRMWARE_VERSION_KEYS:
@@ -219,7 +241,12 @@ class DreameCloudAPI:
             if r.status_code == 200:
                 result = r.json()
                 if result.get("code") == 0 and "data" in result:
-                    return result["data"]["page"]["records"]
+                    data = result.get("data") or {}
+                    page = data.get("page") or {}
+                    records = page.get("records")
+                    if isinstance(records, list):
+                        return records
+                    _LOGGER.error("Unexpected device list response: %s", result)
         except Exception as ex:
             _LOGGER.error("Failed to get devices: %s", ex)
         return None
@@ -228,9 +255,9 @@ class DreameCloudAPI:
         devices = self.get_devices()
         if not devices:
             return []
-        return [d for d in devices if ".airp." in d.get("model", "")]
+        return [d for d in devices if ".airp." in str(d.get("model") or "")]
 
-    def send_command(self, did: str, method: str, params, host: str = None):
+    def send_command(self, did: str, method: str, params, host: str = None, retry: bool = True):
         if not self._refresh_login():
             return None
         host_prefix = f"-{host.split('.')[0]}" if host else ""
@@ -250,8 +277,8 @@ class DreameCloudAPI:
                     if result.get("success"):
                         return {"code": 0}
             elif r.status_code == 401:
-                if self.login():
-                    return self.send_command(did, method, params, host)
+                if retry and self.login():
+                    return self.send_command(did, method, params, host, retry=False)
         except Exception as ex:
             _LOGGER.error("Command failed: %s", ex)
         return None
@@ -392,22 +419,24 @@ class DreameAirPurifier:
             self._available = False
             return False
         self._available = True
-        self._power = all_values.get((2, 1), 1 if self._power else 2) == 1
-        self._mode = all_values.get((2, 3), self._mode)
-        self._fan_speed = all_values.get((2, 4), self._fan_speed)
-        self._voice_interaction_volume = all_values.get((2, 5), self._voice_interaction_volume)
-        self._light_control = all_values.get((2, 6), self._light_control)
-        self._keypress_tone = bool(all_values.get((2, 7), self._keypress_tone))
-        self._aq_level = all_values.get((3, 4), self._aq_level)
-        self._pm25 = all_values.get((3, 5), self._pm25)
-        self._filter_life = all_values.get((4, 1), self._filter_life)
-        self._filter_days_left = all_values.get((4, 2), self._filter_days_left)
-        self._filter_used = all_values.get((4, 3), self._filter_used)
+        power = _as_int(all_values.get((2, 1)))
+        if power is not None:
+            self._power = power == 1
+        self._mode = _as_int(all_values.get((2, 3)), self._mode)
+        self._fan_speed = _as_int(all_values.get((2, 4)), self._fan_speed)
+        self._voice_interaction_volume = _as_int(all_values.get((2, 5)), self._voice_interaction_volume)
+        self._light_control = _as_int(all_values.get((2, 6)), self._light_control)
+        self._keypress_tone = _as_bool(all_values.get((2, 7)), self._keypress_tone)
+        self._aq_level = _as_int(all_values.get((3, 4)), self._aq_level)
+        self._pm25 = _as_int(all_values.get((3, 5)), self._pm25)
+        self._filter_life = _as_int(all_values.get((4, 1)), self._filter_life)
+        self._filter_days_left = _as_int(all_values.get((4, 2)), self._filter_days_left)
+        self._filter_used = _as_int(all_values.get((4, 3)), self._filter_used)
         self._device_location = all_values.get((6, 3), self._device_location)
-        self._child_lock = bool(all_values.get((6, 5), self._child_lock))
-        self._play_mode = bool(all_values.get((6, 6), self._play_mode))
-        self._voice_interaction = bool(all_values.get((6, 7), self._voice_interaction))
-        self._timer_hours = all_values.get((6, 8), self._timer_hours)
+        self._child_lock = _as_bool(all_values.get((6, 5)), self._child_lock)
+        self._play_mode = _as_bool(all_values.get((6, 6)), self._play_mode)
+        self._voice_interaction = _as_bool(all_values.get((6, 7)), self._voice_interaction)
+        self._timer_hours = _as_int(all_values.get((6, 8)), self._timer_hours)
         return True
 
     def toggle_power(self) -> bool:
@@ -429,6 +458,7 @@ class DreameAirPurifier:
         return self._api.set_property(self._did, 2, 3, mode, self._host)
 
     def set_fan_speed(self, speed: int) -> bool:
+        speed = _as_int(speed, self._fan_speed or 1)
         return self._api.set_property(self._did, 2, 4, max(1, min(5, speed)), self._host)
 
     def set_fan_speed_percent(self, percent: int) -> bool:

@@ -3,10 +3,9 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import DreameAirPurifier
 from .const import DOMAIN
-from .entity import dreame_device_info
+from .entity import DreameEntity
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
@@ -16,18 +15,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                          DreameVoiceInteractionSwitch(data["coordinator"], p), DreameKeypressToneSwitch(data["coordinator"], p)])
     async_add_entities(entities)
 
-class DreameBaseSwitch(CoordinatorEntity, SwitchEntity):
-    _attr_has_entity_name = True
+class DreameBaseSwitch(DreameEntity, SwitchEntity):
     def __init__(self, coordinator, purifier: DreameAirPurifier, key: str, name: str):
-        super().__init__(coordinator)
-        self._purifier = purifier
-        self._attr_unique_id = f"{purifier.unique_id}_{key}"
-        self._attr_name = name
-    @property
-    def device_info(self):
-        return dreame_device_info(self._purifier)
-    @property
-    def available(self): return self._purifier.available
+        super().__init__(coordinator, purifier, key, name)
 
 class DreameChildLockSwitch(DreameBaseSwitch):
     _attr_icon = "mdi:lock"

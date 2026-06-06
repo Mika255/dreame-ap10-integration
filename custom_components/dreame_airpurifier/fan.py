@@ -5,11 +5,10 @@ from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DreameAirPurifier, MODE_NAME_TO_VALUE
 from .const import DOMAIN, PRESET_MODES
-from .entity import dreame_device_info
+from .entity import DreameEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -18,7 +17,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities(entities)
 
 
-class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
+class DreameAirPurifierFan(DreameEntity, FanEntity):
     """Dreame Air Purifier fan entity."""
 
     _attr_has_entity_name = True
@@ -26,18 +25,12 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
     _attr_speed_count = 5  # 5 speed levels
 
     def __init__(self, coordinator, purifier: DreameAirPurifier):
-        super().__init__(coordinator)
-        self._purifier = purifier
-        self._attr_unique_id = f"{purifier.unique_id}_fan"
+        super().__init__(coordinator, purifier, "fan", None)
         self._attr_supported_features = (
             FanEntityFeature.SET_SPEED | FanEntityFeature.PRESET_MODE
             | FanEntityFeature.TURN_ON | FanEntityFeature.TURN_OFF
         )
         self._attr_preset_modes = PRESET_MODES
-
-    @property
-    def device_info(self):
-        return dreame_device_info(self._purifier)
 
     @property
     def is_on(self) -> bool:
@@ -52,10 +45,6 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
     @property
     def preset_mode(self) -> str | None:
         return self._purifier.mode
-
-    @property
-    def available(self) -> bool:
-        return self._purifier.available
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

@@ -8,7 +8,7 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 
 ### Fan Entity
 - **Power on/off** — "Off" uses Sleep Purification at minimum speed to keep the device cloud-connected
-- **Mode** — Pet Purify, AI Purify, Strong Purification, Sleep Purification, Custom Mode
+- **Mode** — AI Purify, Strong Purification, Sleep Purification, Custom Mode, Pet Purify
 - **Fan speed** — 5 speed levels, shown as 20/40/60/80/100% in Home Assistant
 - Setting fan speed uses Custom Mode with speed levels 1-5
 
@@ -22,7 +22,7 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 
 ### Switches
 - **Child Lock** — Enable or disable the child lock
-- **Play mode** — Enable or disable play mode
+- **Play Mode** — Enable or disable play mode
 - **Voice Interaction** — Enable or disable voice interaction
 - **Keypress Tone** — Enable or disable button press sounds
 
@@ -30,7 +30,7 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 - **Light Control** — Off, Blue, Orange, Green
 - **Voice Interaction Volume** — Minimum, Moderate, High
 - **Timer** — Set timer duration from 0-12 hours; `0` disables the timer
-- **High Efficiency Composite Filter Reset** — Reset the filter lifetime counter
+- **Filter Reset** — Reset the filter lifetime counter
 
 ## Installation
 
@@ -89,7 +89,7 @@ This integration communicates via the Dreame Cloud API, the same cloud path used
 | 4 | aiid 1 | High Efficiency Composite Filter Reset | Action |
 | 6 | piid 3 | Device Location | User-set location string |
 | 6 | piid 5 | Child Lock | `0=off`, `1=on` |
-| 6 | piid 6 | Play mode | `0=off`, `1=on` |
+| 6 | piid 6 | Play Mode | `0=off`, `1=on` |
 | 6 | piid 7 | Voice Interaction | `0=off`, `1=on` |
 | 6 | piid 8 | Timer | `0=off`, `1-12` hours |
 

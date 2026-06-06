@@ -3,10 +3,9 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import DreameAirPurifier, LIGHT_CONTROL_OPTIONS, VOICE_INTERACTION_VOLUME_OPTIONS
 from .const import DOMAIN
-from .entity import dreame_device_info
+from .entity import DreameEntity
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
@@ -15,18 +14,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         entities.extend([DreameLightControlSelect(data["coordinator"], p), DreameVoiceInteractionVolumeSelect(data["coordinator"], p)])
     async_add_entities(entities)
 
-class DreameBaseSelect(CoordinatorEntity, SelectEntity):
-    _attr_has_entity_name = True
+class DreameBaseSelect(DreameEntity, SelectEntity):
     def __init__(self, coordinator, purifier: DreameAirPurifier, key: str, name: str):
-        super().__init__(coordinator)
-        self._purifier = purifier
-        self._attr_unique_id = f"{purifier.unique_id}_{key}"
-        self._attr_name = name
-    @property
-    def device_info(self):
-        return dreame_device_info(self._purifier)
-    @property
-    def available(self): return self._purifier.available
+        super().__init__(coordinator, purifier, key, name)
 
 class DreameLightControlSelect(DreameBaseSelect):
     _attr_icon = "mdi:palette"

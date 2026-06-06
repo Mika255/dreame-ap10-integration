@@ -11,42 +11,19 @@ import getpass
 import importlib.util
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 API_PATH = ROOT / "custom_components" / "dreame_airpurifier" / "api.py"
 
-spec = importlib.util.spec_from_file_location("dreame_airpurifier_api", API_PATH)
-if spec is None or spec.loader is None:
-    print(f"Could not load {API_PATH}")
-    sys.exit(2)
-api_module = importlib.util.module_from_spec(spec)
-try:
-    spec.loader.exec_module(api_module)
-except ModuleNotFoundError as ex:
-    if ex.name == "requests":
-        print("Missing Python package: requests")
-        print("Install it with: python3 -m pip install requests")
-        print("Or run without installing: uv run --with requests python scripts/probe_property.py ...")
-        sys.exit(2)
-    raise
-DreameCloudAPI = api_module.DreameCloudAPI
-CANDIDATE_TOGGLES = getattr(
-    api_module,
-    "EXPERIMENTAL_TOGGLES",
-    [
-        {"id": 1, "name": "Toggle 1", "siid": 2, "piid": 6},
-        {"id": 4, "name": "Toggle 4", "siid": 7, "piid": 7},
-        {"id": 5, "name": "Toggle 5", "siid": 2, "piid": 6},
-    ],
-)
-CANDIDATE_TOGGLE_POLL_BATCHES = getattr(
-    api_module,
-    "EXPERIMENTAL_TOGGLE_POLL_BATCHES",
-    [[toggle] for toggle in CANDIDATE_TOGGLES],
-)
+DEFAULT_CANDIDATE_TOGGLES = [
+    {"id": 1, "name": "Toggle 1", "siid": 2, "piid": 6},
+    {"id": 4, "name": "Toggle 4", "siid": 7, "piid": 7},
+    {"id": 5, "name": "Toggle 5", "siid": 2, "piid": 6},
+]
+CANDIDATE_TOGGLES = DEFAULT_CANDIDATE_TOGGLES
+CANDIDATE_TOGGLE_POLL_BATCHES = [[toggle] for toggle in CANDIDATE_TOGGLES]
 CANDIDATE_TOGGLE_BY_ID = {toggle["id"]: toggle for toggle in CANDIDATE_TOGGLES}
 CANDIDATE_TOGGLE_IDS = sorted(CANDIDATE_TOGGLE_BY_ID)
 PAI_CANDIDATES = [
@@ -135,6 +112,37 @@ PAI_CANDIDATES = [
         "comment": "Nearby device-settings slot after timer.",
     },
 ]
+
+
+def load_api_module():
+    spec = importlib.util.spec_from_file_location("dreame_airpurifier_api", API_PATH)
+    if spec is None or spec.loader is None:
+        print(f"Could not load {API_PATH}")
+        raise SystemExit(2)
+    api_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(api_module)
+    except ModuleNotFoundError as ex:
+        if ex.name == "requests":
+            print("Missing Python package: requests")
+            print("Install it with: python3 -m pip install requests")
+            print("Or run without installing: uv run --with requests python scripts/probe_property.py ...")
+            raise SystemExit(2)
+        raise
+    return api_module
+
+
+def as_dict(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
 
 
 def parse_value(raw: str):
@@ -334,7 +342,8 @@ def main() -> int:
         print("Missing Dreame username/password.")
         return 2
 
-    api = DreameCloudAPI(args.username, args.password, args.country)
+    api_module = load_api_module()
+    api = api_module.DreameCloudAPI(args.username, args.password, args.country)
     if not api.login():
         print("Login failed.")
         return 1
@@ -352,7 +361,8 @@ def main() -> int:
             return 0
         did = str(device["did"])
         host = host or device.get("bindDomain")
-        name = device.get("customName") or device.get("deviceInfo", {}).get("displayName")
+        device_details = as_dict(device.get("deviceInfo"))
+        name = device.get("customName") or device_details.get("displayName")
         print(f"Using device: {name or device.get('model', 'unknown')} ({device.get('model')})")
 
     if args.read_all_toggles:

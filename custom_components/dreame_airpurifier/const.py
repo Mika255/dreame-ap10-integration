@@ -7,9 +7,9 @@ CONF_COUNTRY = "country"
 COUNTRY_OPTIONS = ["us", "cn", "eu", "sg", "kr"]
 
 PRESET_MODES = [
-    "Pet Purify",
     "AI Purify",
     "Strong Purification",
     "Sleep Purification",
     "Custom Mode",
+    "Pet Purify",
 ]

@@ -1,12 +1,9 @@
 """Config flow for Dreame Air Purifier."""
-import logging
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from .api import DreameCloudAPI
 from .const import DOMAIN, CONF_COUNTRY, COUNTRY_OPTIONS
-
-_LOGGER = logging.getLogger(__name__)
 
 class DreameAirPurifierConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -14,6 +11,10 @@ class DreameAirPurifierConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
+            unique_id = f"{user_input[CONF_COUNTRY]}:{user_input[CONF_USERNAME].casefold()}"
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
             api = DreameCloudAPI(user_input[CONF_USERNAME], user_input[CONF_PASSWORD], user_input[CONF_COUNTRY])
             success = await self.hass.async_add_executor_job(api.login)
             if success:
