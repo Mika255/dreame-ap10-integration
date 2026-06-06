@@ -14,7 +14,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class DreameFilterResetButton(CoordinatorEntity, ButtonEntity):
     _attr_has_entity_name = True
     _attr_icon = "mdi:filter-sync"
-    _attr_name = "High Efficiency Composite Filter Reset"
+    _attr_name = "Filter Reset"
     def __init__(self, coordinator, purifier: DreameAirPurifier):
         super().__init__(coordinator)
         self._purifier = purifier

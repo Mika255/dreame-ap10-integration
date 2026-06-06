@@ -15,7 +15,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data = hass.data[DOMAIN][entry.entry_id]
     entities = []
     for p in data["purifiers"]:
-        entities.extend([DreameChildLockSwitch(data["coordinator"], p), DreamePlayModeSwitch(data["coordinator"], p),
+        entities.extend([DreamePlayModeSwitch(data["coordinator"], p), DreameChildLockSwitch(data["coordinator"], p),
                          DreameVoiceInteractionSwitch(data["coordinator"], p), DreameKeypressToneSwitch(data["coordinator"], p)])
     async_add_entities(entities)
 
