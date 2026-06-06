@@ -69,7 +69,7 @@ class DreameAirPurifierFan(CoordinatorEntity, FanEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "fan_speed_level": self._purifier.fan_speed,
-            "ionizer": self._purifier.ionizer,
+            "blue_light": self._purifier.blue_light,
         }
 
     async def async_turn_on(self, percentage=None, preset_mode=None, **kwargs) -> None:

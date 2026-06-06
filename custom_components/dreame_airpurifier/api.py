@@ -20,7 +20,7 @@ PROP_POWER = {"siid": 2, "piid": 1}         # int: 1=on, 2=standby/off
 PROP_MODE = {"siid": 2, "piid": 3}          # int: 0=Auto, 2=Sleep, 3=Custom, 4=Pet
 PROP_FAN_SPEED = {"siid": 2, "piid": 4}     # int: 1-5 fan speed level
 PROP_FAN_PCT = {"siid": 2, "piid": 5}       # int: percentage (read-only)
-PROP_IONIZER = {"siid": 2, "piid": 6}       # int: -1=auto, 0=off, 1=on
+PROP_BLUE_LIGHT = {"siid": 2, "piid": 6}    # int: -1=auto, 0=off, 1=on
 
 # siid 3: Environment Sensors
 PROP_AQ_LEVEL = {"siid": 3, "piid": 4}
@@ -32,17 +32,17 @@ PROP_FILTER_DAYS = {"siid": 4, "piid": 2}
 PROP_FILTER_USED = {"siid": 4, "piid": 3}
 
 # siid 6: Device Settings
-PROP_LED = {"siid": 6, "piid": 5}
-PROP_BUZZER = {"siid": 6, "piid": 6}
-PROP_CHILD_LOCK = {"siid": 6, "piid": 7}
+PROP_CHILD_LOCK = {"siid": 6, "piid": 5}
+PROP_PLAY_MODE = {"siid": 6, "piid": 6}
+PROP_VOICE_CONTROL = {"siid": 6, "piid": 7}
 PROP_LIGHT_MODE = {"siid": 6, "piid": 8}
 
 # Poll batches (small to avoid timeout)
 POLL_BATCHES = [
-    [PROP_POWER, PROP_MODE, PROP_FAN_SPEED, PROP_FAN_PCT, PROP_IONIZER],
+    [PROP_POWER, PROP_MODE, PROP_FAN_SPEED, PROP_FAN_PCT, PROP_BLUE_LIGHT],
     [PROP_AQ_LEVEL, PROP_PM25],
     [PROP_FILTER_LIFE, PROP_FILTER_DAYS, PROP_FILTER_USED],
-    [PROP_LED, PROP_BUZZER, PROP_CHILD_LOCK, PROP_LIGHT_MODE],
+    [PROP_CHILD_LOCK, PROP_PLAY_MODE, PROP_VOICE_CONTROL, PROP_LIGHT_MODE],
 ]
 
 # Mode mapping (VERIFIED)
@@ -212,15 +212,15 @@ class DreameAirPurifier:
         self._mode = MODE_AUTO
         self._fan_speed = 0
         self._fan_pct = 0
-        self._ionizer = False
+        self._blue_light = False
         self._pm25 = 0
         self._aq_level = 0
         self._filter_life = 100
         self._filter_days = 365
         self._filter_used = 0
-        self._led = False
-        self._buzzer = False
         self._child_lock = False
+        self._play_mode = False
+        self._voice_control = False
         self._light_mode = 0
         self._available = True
 
@@ -254,7 +254,7 @@ class DreameAirPurifier:
     @property
     def fan_speed_percent(self): return max(0, self._fan_speed * 20) if self._fan_speed > 0 else 0
     @property
-    def ionizer(self): return self._ionizer
+    def blue_light(self): return self._blue_light
     @property
     def pm25(self): return self._pm25
     @property
@@ -266,11 +266,11 @@ class DreameAirPurifier:
     @property
     def filter_hours_used(self): return self._filter_used
     @property
-    def led(self): return self._led
-    @property
-    def buzzer(self): return self._buzzer
-    @property
     def child_lock(self): return self._child_lock
+    @property
+    def play_mode(self): return self._play_mode
+    @property
+    def voice_control(self): return self._voice_control
 
     def update(self) -> bool:
         all_values = {}
@@ -286,16 +286,16 @@ class DreameAirPurifier:
         self._mode = all_values.get((2, 3), 0)
         self._fan_speed = all_values.get((2, 4), 0)
         self._fan_pct = all_values.get((2, 5), 0)
-        ionizer_val = all_values.get((2, 6), 0)
-        self._ionizer = ionizer_val == 1
+        blue_light_val = all_values.get((2, 6), 0)
+        self._blue_light = blue_light_val == 1
         self._aq_level = all_values.get((3, 4), 0)
         self._pm25 = all_values.get((3, 5), 0)
         self._filter_life = all_values.get((4, 1), 0)
         self._filter_days = all_values.get((4, 2), 365)
         self._filter_used = all_values.get((4, 3), 0)
-        self._led = bool(all_values.get((6, 5), 0))
-        self._buzzer = bool(all_values.get((6, 6), 0))
-        self._child_lock = bool(all_values.get((6, 7), 0))
+        self._child_lock = bool(all_values.get((6, 5), 0))
+        self._play_mode = bool(all_values.get((6, 6), 0))
+        self._voice_control = bool(all_values.get((6, 7), 0))
         self._light_mode = all_values.get((6, 8), 0)
         return True
 
@@ -330,16 +330,16 @@ class DreameAirPurifier:
             return self.turn_off()
         return self.set_fan_speed(max(1, min(5, round(percent / 20))))
 
-    def set_ionizer(self, enabled: bool) -> bool:
+    def set_blue_light(self, enabled: bool) -> bool:
         return self._api.set_property(self._did, 2, 6, 1 if enabled else 0, self._host)
 
-    def set_led(self, enabled: bool) -> bool:
+    def set_child_lock(self, enabled: bool) -> bool:
         return self._api.set_property(self._did, 6, 5, 1 if enabled else 0, self._host)
 
-    def set_buzzer(self, enabled: bool) -> bool:
+    def set_play_mode(self, enabled: bool) -> bool:
         return self._api.set_property(self._did, 6, 6, 1 if enabled else 0, self._host)
 
-    def set_child_lock(self, enabled: bool) -> bool:
+    def set_voice_control(self, enabled: bool) -> bool:
         return self._api.set_property(self._did, 6, 7, 1 if enabled else 0, self._host)
 
     def reset_filter(self) -> bool:

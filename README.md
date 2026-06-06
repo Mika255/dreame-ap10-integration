@@ -19,10 +19,10 @@ No official Dreame integration exists for air purifiers in Home Assistant — th
 - **Filter Hours Used** — Total hours on the current filter
 
 ### Switches
-- **Ionizer** — Toggle the ionizer on/off
-- **LED Indicator** — Toggle the display LED
-- **Buzzer** — Toggle button sounds
+- **Blue Light** — Toggle the blue light on/off
 - **Child Lock** — Toggle the child lock
+- **Play Mode** — Toggle play mode
+- **Voice Control** — Enable or disable voice control
 
 ## Installation
 
@@ -71,15 +71,15 @@ For anyone looking to extend this integration or build their own, here's the com
 | 2 | 3 | Mode | 0=Auto, 2=Sleep, 3=Custom, 4=Pet |
 | 2 | 4 | Fan Speed | 1-5 |
 | 2 | 5 | Fan Speed % | Read-only percentage |
-| 2 | 6 | Ionizer | -1=auto, 0=off, 1=on |
+| 2 | 6 | Blue Light | -1=auto, 0=off, 1=on |
 | 3 | 4 | Air Quality Level | Numeric index |
 | 3 | 5 | PM2.5 | µg/m³ |
 | 4 | 1 | Filter Life | 0-100% |
 | 4 | 2 | Filter Lifespan | Total days |
 | 4 | 3 | Filter Used | Hours |
-| 6 | 5 | LED | 0=off, 1=on |
-| 6 | 6 | Buzzer | 0=off, 1=on |
-| 6 | 7 | Child Lock | 0=off, 1=on |
+| 6 | 5 | Child Lock | 0=off, 1=on |
+| 6 | 6 | Play Mode | 0=off, 1=on |
+| 6 | 7 | Voice Control | 0=off, 1=on |
 | 6 | 8 | Light Mode | Numeric |
 
 **Key discovery:** Power control requires a toggle action (`siid=2, aiid=3`), not `set_properties`. Direct property writes to `siid=2, piid=1` time out. Mode and fan speed can be set via `set_properties` on `siid=2`. Settings switches (`siid=6`) also use `set_properties` normally.

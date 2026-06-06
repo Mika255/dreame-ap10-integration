@@ -15,8 +15,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data = hass.data[DOMAIN][entry.entry_id]
     entities = []
     for p in data["purifiers"]:
-        entities.extend([DreameIonizerSwitch(data["coordinator"], p), DreameLEDSwitch(data["coordinator"], p),
-                         DreameBuzzerSwitch(data["coordinator"], p), DreameChildLockSwitch(data["coordinator"], p)])
+        entities.extend([DreameBlueLightSwitch(data["coordinator"], p), DreameChildLockSwitch(data["coordinator"], p),
+                         DreamePlayModeSwitch(data["coordinator"], p), DreameVoiceControlSwitch(data["coordinator"], p)])
     async_add_entities(entities)
 
 class DreameBaseSwitch(CoordinatorEntity, SwitchEntity):
@@ -32,29 +32,13 @@ class DreameBaseSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def available(self): return self._purifier.available
 
-class DreameIonizerSwitch(DreameBaseSwitch):
-    _attr_icon = "mdi:creation"
-    def __init__(self, c, p): super().__init__(c, p, "ionizer", "Ionizer")
+class DreameBlueLightSwitch(DreameBaseSwitch):
+    _attr_icon = "mdi:lightbulb-on"
+    def __init__(self, c, p): super().__init__(c, p, "blue_light", "Blue Light")
     @property
-    def is_on(self): return self._purifier.ionizer
-    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_ionizer, True); await self.coordinator.async_request_refresh()
-    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_ionizer, False); await self.coordinator.async_request_refresh()
-
-class DreameLEDSwitch(DreameBaseSwitch):
-    _attr_icon = "mdi:led-on"
-    def __init__(self, c, p): super().__init__(c, p, "led", "LED Indicator")
-    @property
-    def is_on(self): return self._purifier.led
-    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_led, True); await self.coordinator.async_request_refresh()
-    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_led, False); await self.coordinator.async_request_refresh()
-
-class DreameBuzzerSwitch(DreameBaseSwitch):
-    _attr_icon = "mdi:volume-high"
-    def __init__(self, c, p): super().__init__(c, p, "buzzer", "Buzzer")
-    @property
-    def is_on(self): return self._purifier.buzzer
-    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_buzzer, True); await self.coordinator.async_request_refresh()
-    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_buzzer, False); await self.coordinator.async_request_refresh()
+    def is_on(self): return self._purifier.blue_light
+    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_blue_light, True); await self.coordinator.async_request_refresh()
+    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_blue_light, False); await self.coordinator.async_request_refresh()
 
 class DreameChildLockSwitch(DreameBaseSwitch):
     _attr_icon = "mdi:lock"
@@ -63,3 +47,19 @@ class DreameChildLockSwitch(DreameBaseSwitch):
     def is_on(self): return self._purifier.child_lock
     async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_child_lock, True); await self.coordinator.async_request_refresh()
     async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_child_lock, False); await self.coordinator.async_request_refresh()
+
+class DreamePlayModeSwitch(DreameBaseSwitch):
+    _attr_icon = "mdi:play-circle"
+    def __init__(self, c, p): super().__init__(c, p, "play_mode", "Play Mode")
+    @property
+    def is_on(self): return self._purifier.play_mode
+    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_play_mode, True); await self.coordinator.async_request_refresh()
+    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_play_mode, False); await self.coordinator.async_request_refresh()
+
+class DreameVoiceControlSwitch(DreameBaseSwitch):
+    _attr_icon = "mdi:microphone"
+    def __init__(self, c, p): super().__init__(c, p, "voice_control", "Voice Control")
+    @property
+    def is_on(self): return self._purifier.voice_control
+    async def async_turn_on(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_voice_control, True); await self.coordinator.async_request_refresh()
+    async def async_turn_off(self, **kwargs): await self.hass.async_add_executor_job(self._purifier.set_voice_control, False); await self.coordinator.async_request_refresh()
