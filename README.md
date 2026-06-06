@@ -38,7 +38,7 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 
 1. In Home Assistant: **HACS -> Integrations**
 2. Click **...** (top right) -> **Custom repositories**
-3. Paste URL: `https://github.com/CodyJon/dreame-ap10-integration`
+3. Paste URL: `https://github.com/Mika255/dreame-ap10-integration`
 4. Category: **Integration** -> **Add**
 5. Search **"Dreame AP-10"** -> **Download** -> restart HA
 6. **Settings -> Devices & Services -> + Add Integration** -> search "Dreame" -> enter your Dreamehome app credentials
