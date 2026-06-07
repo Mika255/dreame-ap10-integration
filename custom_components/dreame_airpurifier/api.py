@@ -463,7 +463,16 @@ class DreameAirPurifier:
             self._available = False
             return False
         self._available = True
-        power = _as_int(all_values.get((2, 1)))
+        # Power is read through the stale-read grace window so an optimistic
+        # turn_on/turn_off is not reverted by a poll that lands before the
+        # device has finished waking or going to standby (cloud state lags).
+        power = _as_int(
+            self._switch_property_value(
+                all_values,
+                PROP_POWER,
+                POWER_STATE_ON if self._power else POWER_STATE_STANDBY,
+            )
+        )
         if power == POWER_STATE_ON:
             self._power = True
         elif power == POWER_STATE_STANDBY:
@@ -530,6 +539,7 @@ class DreameAirPurifier:
         ):
             return False
         self._power = True
+        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_ON)
         return True
 
     def turn_off(self) -> bool:
@@ -539,6 +549,7 @@ class DreameAirPurifier:
         if not self._api.call_action(self._did, ACTION_POWER_OFF["siid"], ACTION_POWER_OFF["aiid"], host=self._host):
             return False
         self._power = False
+        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_STANDBY)
         return True
 
     def set_mode(self, mode: int) -> bool:

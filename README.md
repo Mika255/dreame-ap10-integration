@@ -1,122 +1,81 @@
-# Dreame AP-10 Air Purifier Integration for Home Assistant
+# Dreame AP-10 Air Purifier for Home Assistant
 
-Custom Home Assistant integration for the **Dreame AP-10 Air Purifier** (model `dreame.airp.u2507`), built by reverse-engineering the Dreame Cloud API.
+I have a Dreame AP-10 (the Pet Air Purifier, model `dreame.airp.u2507`) running at home, and Home Assistant had no way to talk to it — Dreame doesn't ship an official air-purifier integration. So I picked apart the cloud API that the Dreamehome app uses and wired it into Home Assistant. This is the result.
 
-No official Dreame integration exists for air purifiers in Home Assistant.
+Everything runs through Dreame's cloud using your normal Dreamehome login; there's no local API for this device.
 
 ## Features
 
 ### Fan Entity
-- **Power on/off** — uses the AP-10 standby power action
+- **Power on/off** — turns the purifier on and puts it into standby
 - **Mode** — AI Purify, Strong Purification, Sleep Purification, Custom Mode, Pet Purify
-- **Fan speed** — 5 speed levels, shown as 20/40/60/80/100% in Home Assistant
-- Setting fan speed uses Custom Mode with speed levels 1-5
+- **Fan speed** — 5 speed levels, shown as 20/40/60/80/100% in Home Assistant (setting a speed switches the device to Custom Mode)
 
 ### Sensors
-- **PM2.5** — Real-time particulate matter reading (µg/m³)
-- **Air Quality Level** — Numeric air quality index from the device
-- **High Efficiency Composite Filter** — Remaining filter percentage
-- **High Efficiency Composite Filter Days Left** — Remaining filter days
-- **High Efficiency Composite Filter Hours Used** — Total hours on the current filter
-- **Device Location** — User-set location from the Dreamehome app
+- **PM2.5** — real-time particulate reading (µg/m³)
+- **Air Quality Level** — numeric air-quality index from the device
+- **High Efficiency Composite Filter** — remaining filter percentage
+- **High Efficiency Composite Filter Days Left** — remaining filter days
+- **High Efficiency Composite Filter Hours Used** — total hours on the current filter
+- **Device Location** — the location you set in the Dreamehome app
 
 ### Switches
-- **Child Lock** — Enable or disable the child lock
-- **Play Mode** — Enable or disable play mode
-- **Voice Interaction** — Enable or disable voice interaction
-- **Keypress Tone** — Enable or disable button press sounds
+- **Child Lock**
+- **Play Mode**
+- **Voice Interaction**
+- **Keypress Tone** — button-press sounds
 
 ### Selects, Number, and Button
 - **Light Control** — Off, Blue, Orange, Green
 - **Voice Interaction Volume** — Minimum, Moderate, High
-- **Timer** — Set timer duration from 0-12 hours; `0` disables the timer
-- **Filter Reset** — Reset the filter lifetime counter
+- **Timer** — 0–12 hours; `0` disables the timer
+- **Filter Reset** — reset the filter lifetime counter
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via HACS (recommended)
 
-1. In Home Assistant: **HACS -> Integrations**
-2. Click **...** (top right) -> **Custom repositories**
+1. In Home Assistant: **HACS → Integrations**
+2. Click **...** (top right) → **Custom repositories**
 3. Paste URL: `https://github.com/Mika255/dreame-ap10-integration`
-4. Category: **Integration** -> **Add**
-5. Search **"Dreame AP-10"** -> **Download** -> restart HA
-6. **Settings -> Devices & Services -> + Add Integration** -> search "Dreame" -> enter your Dreamehome app credentials
+4. Category: **Integration** → **Add**
+5. Search **"Dreame AP-10"** → **Download** → restart HA
+6. **Settings → Devices & Services → + Add Integration** → search "Dreame" → enter your Dreamehome credentials
 
-### Manual Installation
+### Manual installation
 
 1. Download or clone this repo
 2. Copy `custom_components/dreame_airpurifier/` into your HA `config/custom_components/` directory
 3. Restart Home Assistant
-4. **Settings -> Devices & Services -> + Add Integration** -> search "Dreame"
+4. **Settings → Devices & Services → + Add Integration** → search "Dreame"
 
 ## Setup
 
 - Use your **Dreamehome app** credentials (email + password)
 - Select your server region (US, EU, CN, etc.)
-- The integration automatically discovers all AP-10 purifiers on your account
-- Multiple purifiers are supported; each appears as a separate device in HA
+- The integration discovers every AP-10 on your account automatically
+- Multiple purifiers are supported; each shows up as its own device in HA
 
-## Important Notes
+## Good to know
 
-### Power Behavior
+**Power:** "Turn off" in Home Assistant puts the purifier into standby; "Turn on" wakes it and restores whatever mode and fan level it had before. Power is the one control that doesn't work as a plain property write — the integration drives it through the device's power actions. The details (and how the wake command was found) are in the [API analysis](docs/Dreame-AP10-API-Analysis.md).
 
-The AP-10 reports its real power state as `siid=2, piid=1`, with `1=on` and `2=standby`. Direct writes to this property time out, so the integration uses the AP-10 power action instead:
+**Cloud polling:** the integration polls the Dreame cloud every 30 seconds, so state can lag a little behind physical changes. There's no local API for this device.
 
-- **"Turn off" in HA** switches the purifier to standby
-- **"Turn on" in HA** wakes the purifier and restores AI Purify
+## API reference
 
-### Cloud Polling
-
-This integration communicates via the Dreame Cloud API, the same cloud path used by the Dreamehome app. It polls for state updates every 30 seconds. Commands are sent through the cloud; there is no local API available for this device.
-
-## Verified Property Map
-
-| siid | piid / aiid | Property | Values |
-|------|-------------|----------|--------|
-| 2 | piid 1 | Power | `1=on`, `2=standby` |
-| 2 | piid 3 | Mode | `0=AI Purify`, `1=Strong Purification`, `2=Sleep Purification`, `3=Custom Mode`, `4=Pet Purify` |
-| 2 | piid 4 | Fan Speed | `1-5`; used with `2/3=3` for Custom Mode |
-| 2 | piid 5 | Voice Interaction Volume | `80=minimum`, `90=moderate`, `100=high` |
-| 2 | piid 6 | Light Control | `-1=off`, `0=blue`, `1=orange`, `2=green` |
-| 2 | piid 7 | Keypress Tone | `0=off`, `1=on` |
-| 3 | piid 4 | Air Quality Level | Numeric index |
-| 3 | piid 5 | PM2.5 | µg/m³ |
-| 4 | piid 1 | High Efficiency Composite Filter | `0-100%` remaining |
-| 4 | piid 2 | High Efficiency Composite Filter Days Left | Remaining days |
-| 4 | piid 3 | High Efficiency Composite Filter Used | Hours |
-| 4 | aiid 1 | High Efficiency Composite Filter Reset | Action |
-| 6 | piid 3 | Device Location | User-set location string |
-| 6 | piid 5 | Child Lock | `0=off`, `1=on` |
-| 6 | piid 6 | Play Mode | `0=off`, `1=on` |
-| 6 | piid 7 | Voice Interaction | `0=off`, `1=on` |
-| 6 | piid 8 | Timer | `0=off`, `1-12` hours |
-
-Power control requires action `siid=2, aiid=3`; direct writes to `siid=2, piid=1` time out. Mode and fan speed can be set via `set_properties` on `siid=2`. For Custom Mode fan speed, set `siid=2, piid=3` to `3` and `siid=2, piid=4` to speed `1-5`.
-
-## Property Probing
-
-The included probe script can read or write raw properties, scan property ranges, and trace app changes:
-
-```bash
-python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --siid 6 --piid 8
-python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --siid 6 --piid 8 --value 2
-python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --scan-siids 2-8 --scan-piids 1-12
-python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --trace-app-change
-
-# No local requests install? Use uv instead:
-uv run --with requests python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --siid 6 --piid 8
-uv run --with requests python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --siid 6 --piid 8 --value 2
-uv run --with requests python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --scan-siids 2-8 --scan-piids 1-12
-uv run --with requests python3 scripts/probe_property.py --country eu --username "YOUR_EMAIL" --password "YOUR_PASSWORD" --trace-app-change
-```
+The full MiOT property/action map, power-control commands, connection details, and the `scripts/probe_property.py` probing tools live in **[docs/Dreame-AP10-API-Analysis.md](docs/Dreame-AP10-API-Analysis.md)**.
 
 ## Troubleshooting
 
-- **Login fails?** Verify your credentials work in the Dreamehome app. The integration uses the same login.
-- **Device unavailable?** Check that it shows online in the Dreamehome app and that the selected region matches your account.
-- **Commands not working?** Check HA logs under Developer Tools -> Logs, search for `dreame_airpurifier`.
-- **State not updating?** The integration polls every 30 seconds. Cloud state can sometimes lag behind physical changes.
+- **Login fails?** Make sure the same credentials work in the Dreamehome app — the integration uses the same login.
+- **Device unavailable?** Check that it's online in the Dreamehome app and that the region you picked matches your account.
+- **Commands not working?** Look under Developer Tools → Logs and search for `dreame_airpurifier`.
+- **State not updating?** It polls every 30 seconds; cloud state can lag behind physical changes.
+
+## Thanks
+
+This project builds on [CodyJon's dreame-ap10-integration](https://github.com/CodyJon/dreame-ap10-integration) — the original groundwork for getting the AP-10 into Home Assistant. Thank you for the head start.
 
 ## Contributing
 
