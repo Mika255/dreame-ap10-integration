@@ -19,6 +19,9 @@ FIRMWARE_VERSION_KEYS = (
     "fw_version",
 )
 STALE_SWITCH_READ_GRACE_SECONDS = 15
+# Power state settles ~7s after a wake/standby command; hold the optimistic
+# state a little longer to absorb cloud eventual-consistency re-reads.
+POWER_COMMAND_GRACE_SECONDS = 10
 
 # === MiOT Property Map for dreame.airp.u2507 (Dreame AP10) ===
 # Verified by live testing and Dreame-AP10-API-Analysis.md.
@@ -414,10 +417,12 @@ class DreameAirPurifier:
     @property
     def timer_hours(self): return self._timer_hours
 
-    def _remember_pending_switch_property(self, prop: dict, value: int) -> None:
+    def _remember_pending_switch_property(
+        self, prop: dict, value: int, grace: float = STALE_SWITCH_READ_GRACE_SECONDS
+    ) -> None:
         self._pending_switch_properties[(prop["siid"], prop["piid"])] = (
             value,
-            time.monotonic() + STALE_SWITCH_READ_GRACE_SECONDS,
+            time.monotonic() + grace,
         )
 
     def _property_values_match(self, value, pending_value) -> bool:
@@ -463,20 +468,25 @@ class DreameAirPurifier:
             self._available = False
             return False
         self._available = True
-        # Power is read through the stale-read grace window so an optimistic
-        # turn_on/turn_off is not reverted by a poll that lands before the
-        # device has finished waking or going to standby (cloud state lags).
-        power = _as_int(
-            self._switch_property_value(
-                all_values,
-                PROP_POWER,
-                POWER_STATE_ON if self._power else POWER_STATE_STANDBY,
-            )
-        )
-        if power == POWER_STATE_ON:
-            self._power = True
-        elif power == POWER_STATE_STANDBY:
-            self._power = False
+        # Power: after a turn_on/turn_off command we hold the optimistic state
+        # for the full grace window and ignore every contradicting poll. Cloud
+        # state lags a few seconds after a wake/standby command and can even
+        # briefly report the old value again (eventual consistency between cloud
+        # nodes), which would otherwise flicker the Home Assistant toggle. We do
+        # NOT clear on the first matching read, because a later poll could still
+        # return the stale value. Once the window expires, the real polled state
+        # takes over.
+        power_key = (PROP_POWER["siid"], PROP_POWER["piid"])
+        power_pending = self._pending_switch_properties.get(power_key)
+        if power_pending is not None and time.monotonic() < power_pending[1]:
+            pass  # keep the optimistic self._power set by turn_on/turn_off
+        else:
+            self._pending_switch_properties.pop(power_key, None)
+            power = _as_int(all_values.get(power_key))
+            if power == POWER_STATE_ON:
+                self._power = True
+            elif power == POWER_STATE_STANDBY:
+                self._power = False
         self._mode = _as_int(all_values.get((2, 3)), self._mode)
         self._fan_speed = _as_int(all_values.get((2, 4)), self._fan_speed)
         self._voice_interaction_volume = _as_int(all_values.get((2, 5)), self._voice_interaction_volume)
@@ -539,7 +549,7 @@ class DreameAirPurifier:
         ):
             return False
         self._power = True
-        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_ON)
+        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_ON, POWER_COMMAND_GRACE_SECONDS)
         return True
 
     def turn_off(self) -> bool:
@@ -549,7 +559,7 @@ class DreameAirPurifier:
         if not self._api.call_action(self._did, ACTION_POWER_OFF["siid"], ACTION_POWER_OFF["aiid"], host=self._host):
             return False
         self._power = False
-        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_STANDBY)
+        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_STANDBY, POWER_COMMAND_GRACE_SECONDS)
         return True
 
     def set_mode(self, mode: int) -> bool:

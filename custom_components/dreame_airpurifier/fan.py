@@ -55,6 +55,7 @@ class DreameAirPurifierFan(DreameEntity, FanEntity):
 
     async def async_turn_on(self, percentage=None, preset_mode=None, **kwargs) -> None:
         await self.hass.async_add_executor_job(self._purifier.turn_on)
+        self.async_write_ha_state()  # reflect intent immediately, before polling
         if preset_mode is not None:
             await self.async_set_preset_mode(preset_mode)
         if percentage is not None:
@@ -63,6 +64,7 @@ class DreameAirPurifierFan(DreameEntity, FanEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.hass.async_add_executor_job(self._purifier.turn_off)
+        self.async_write_ha_state()  # reflect intent immediately, before polling
         await self.coordinator.async_request_refresh()
 
     async def async_set_percentage(self, percentage: int) -> None:
