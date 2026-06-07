@@ -1,6 +1,6 @@
 # Dreame AP-10 Air Purifier for Home Assistant
 
-I have a Dreame AP-10 (the Pet Air Purifier, model `dreame.airp.u2507`) running at home, and Home Assistant had no way to talk to it — Dreame doesn't ship an official air-purifier integration. So I picked apart the cloud API that the Dreamehome app uses and wired it into Home Assistant. This is the result.
+I have a Dreame AP-10 (the Pet Air Purifier, model `dreame.airp.u2507`) running at home, and Home Assistant had no way to talk to it — Dreame doesn't ship an official air-purifier integration. Based on the implementation of [CodyJon's dreame-ap10-integration](https://github.com/CodyJon/dreame-ap10-integration). I've continued his work, and after creating a script to manually test all ssid-piid pairs, i've fixed many of the sensors and controls. This is the result.
 
 Everything runs through Dreame's cloud using your normal Dreamehome login; there's no local API for this device.
 
