@@ -105,7 +105,7 @@ TIMER_MIN_HOURS = 0
 TIMER_MAX_HOURS = 12
 
 # Power: direct set_properties on siid 2 piid 1 does not work (no-op/timeout).
-# Verified working actions (see AP10-Power-Toggle-Investigation.md):
+# Verified working actions (see docs/Dreame-AP10-API-Analysis.md):
 #   ON  -> action siid=2 aiid=1 with input [{"piid": 1, "value": 1}]
 #   OFF -> action siid=2 aiid=3 (no input) puts the device into standby
 ACTION_POWER_ON = {"siid": 2, "aiid": 1, "piid": 1, "value": POWER_STATE_ON}
@@ -358,7 +358,7 @@ class DreameAirPurifier:
         self._voice_interaction = False
         self._timer_hours = 0
         self._available = True
-        self._pending_switch_properties = {}
+        self._pending_writes = {}
 
     @property
     def unique_id(self): return self._mac.replace(":", "").lower() or self._did
@@ -376,7 +376,7 @@ class DreameAirPurifier:
     def available(self): return self._available
     @property
     def is_on(self):
-        """Return the real device power state."""
+        """Return the power state (optimistic during the command grace window)."""
         return self._power
     @property
     def mode(self): return MODE_NAMES.get(self._mode, f"Unknown ({self._mode})")
@@ -417,45 +417,39 @@ class DreameAirPurifier:
     @property
     def timer_hours(self): return self._timer_hours
 
-    def _remember_pending_switch_property(
-        self, prop: dict, value: int, grace: float = STALE_SWITCH_READ_GRACE_SECONDS
+    def _write(self, prop: dict, value) -> bool:
+        """Write a single MiOT property using its PROP_* definition."""
+        return self._api.set_property(self._did, prop["siid"], prop["piid"], value, self._host)
+
+    def _remember_pending_write(
+        self, prop: dict, value, grace: float = STALE_SWITCH_READ_GRACE_SECONDS
     ) -> None:
-        self._pending_switch_properties[(prop["siid"], prop["piid"])] = (
-            value,
-            time.monotonic() + grace,
-        )
+        """Record a value we just wrote so polls don't revert it while it settles."""
+        self._pending_writes[(prop["siid"], prop["piid"])] = (value, time.monotonic() + grace)
 
-    def _property_values_match(self, value, pending_value) -> bool:
-        if value == pending_value:
-            return True
-        parsed_value = _as_int(value)
-        parsed_pending_value = _as_int(pending_value)
-        return parsed_value is not None and parsed_value == parsed_pending_value
+    def _stable_value(self, values: dict, prop: dict, default=None):
+        """Return a property's value, preferring a freshly written value.
 
-    def _switch_property_value(self, values: dict, prop: dict, default=None):
+        After a local write we keep returning the written value until its grace
+        window expires, ignoring contradicting polls. Cloud state lags after a
+        command and can briefly report the old value again (eventual consistency
+        between cloud nodes), which would otherwise flicker the entity. Once the
+        window expires the polled value (or ``default``) takes over.
+        """
         key = (prop["siid"], prop["piid"])
-        has_value = key in values
-        value = values.get(key, default)
-        pending = self._pending_switch_properties.get(key)
-        if pending is None:
-            return value
-        pending_value, expires_at = pending
-        if time.monotonic() >= expires_at:
-            self._pending_switch_properties.pop(key, None)
-            return value
-        if not has_value:
-            return pending_value
-        if self._property_values_match(value, pending_value):
-            self._pending_switch_properties.pop(key, None)
-            return value
-        return pending_value
+        pending = self._pending_writes.get(key)
+        if pending is not None:
+            pending_value, expires_at = pending
+            if time.monotonic() < expires_at:
+                return pending_value
+            self._pending_writes.pop(key, None)
+        return values.get(key, default)
 
     def _set_switch_property(self, prop: dict, enabled: bool, attr: str) -> bool:
-        value = 1 if enabled else 0
-        if not self._api.set_property(self._did, prop["siid"], prop["piid"], value, self._host):
+        if not self._write(prop, 1 if enabled else 0):
             return False
         setattr(self, attr, bool(enabled))
-        self._remember_pending_switch_property(prop, value)
+        self._remember_pending_write(prop, 1 if enabled else 0)
         return True
 
     def update(self) -> bool:
@@ -468,67 +462,27 @@ class DreameAirPurifier:
             self._available = False
             return False
         self._available = True
-        # Power: after a turn_on/turn_off command we hold the optimistic state
-        # for the full grace window and ignore every contradicting poll. Cloud
-        # state lags a few seconds after a wake/standby command and can even
-        # briefly report the old value again (eventual consistency between cloud
-        # nodes), which would otherwise flicker the Home Assistant toggle. We do
-        # NOT clear on the first matching read, because a later poll could still
-        # return the stale value. Once the window expires, the real polled state
-        # takes over.
-        power_key = (PROP_POWER["siid"], PROP_POWER["piid"])
-        power_pending = self._pending_switch_properties.get(power_key)
-        if power_pending is not None and time.monotonic() < power_pending[1]:
-            pass  # keep the optimistic self._power set by turn_on/turn_off
-        else:
-            self._pending_switch_properties.pop(power_key, None)
-            power = _as_int(all_values.get(power_key))
-            if power == POWER_STATE_ON:
-                self._power = True
-            elif power == POWER_STATE_STANDBY:
-                self._power = False
-        self._mode = _as_int(all_values.get((2, 3)), self._mode)
-        self._fan_speed = _as_int(all_values.get((2, 4)), self._fan_speed)
+        power = _as_int(
+            self._stable_value(all_values, PROP_POWER, POWER_STATE_ON if self._power else POWER_STATE_STANDBY)
+        )
+        if power == POWER_STATE_ON:
+            self._power = True
+        elif power == POWER_STATE_STANDBY:
+            self._power = False
+        self._mode = _as_int(self._stable_value(all_values, PROP_MODE, self._mode), self._mode)
+        self._fan_speed = _as_int(self._stable_value(all_values, PROP_FAN_SPEED, self._fan_speed), self._fan_speed)
         self._voice_interaction_volume = _as_int(all_values.get((2, 5)), self._voice_interaction_volume)
         self._light_control = _as_int(all_values.get((2, 6)), self._light_control)
-        self._keypress_tone = _as_bool(
-            self._switch_property_value(
-                all_values,
-                PROP_KEYPRESS_TONE,
-                self._keypress_tone,
-            ),
-            self._keypress_tone,
-        )
+        self._keypress_tone = _as_bool(self._stable_value(all_values, PROP_KEYPRESS_TONE, self._keypress_tone), self._keypress_tone)
         self._aq_level = _as_int(all_values.get((3, 4)), self._aq_level)
         self._pm25 = _as_int(all_values.get((3, 5)), self._pm25)
         self._filter_life = _as_int(all_values.get((4, 1)), self._filter_life)
         self._filter_days_left = _as_int(all_values.get((4, 2)), self._filter_days_left)
         self._filter_used = _as_int(all_values.get((4, 3)), self._filter_used)
         self._device_location = all_values.get((6, 3), self._device_location)
-        self._child_lock = _as_bool(
-            self._switch_property_value(
-                all_values,
-                PROP_CHILD_LOCK,
-                self._child_lock,
-            ),
-            self._child_lock,
-        )
-        self._play_mode = _as_bool(
-            self._switch_property_value(
-                all_values,
-                PROP_PLAY_MODE,
-                self._play_mode,
-            ),
-            self._play_mode,
-        )
-        self._voice_interaction = _as_bool(
-            self._switch_property_value(
-                all_values,
-                PROP_VOICE_INTERACTION,
-                self._voice_interaction,
-            ),
-            self._voice_interaction,
-        )
+        self._child_lock = _as_bool(self._stable_value(all_values, PROP_CHILD_LOCK, self._child_lock), self._child_lock)
+        self._play_mode = _as_bool(self._stable_value(all_values, PROP_PLAY_MODE, self._play_mode), self._play_mode)
+        self._voice_interaction = _as_bool(self._stable_value(all_values, PROP_VOICE_INTERACTION, self._voice_interaction), self._voice_interaction)
         self._timer_hours = _as_int(all_values.get((6, 8)), self._timer_hours)
         return True
 
@@ -549,7 +503,7 @@ class DreameAirPurifier:
         ):
             return False
         self._power = True
-        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_ON, POWER_COMMAND_GRACE_SECONDS)
+        self._remember_pending_write(PROP_POWER, POWER_STATE_ON, POWER_COMMAND_GRACE_SECONDS)
         return True
 
     def turn_off(self) -> bool:
@@ -559,32 +513,40 @@ class DreameAirPurifier:
         if not self._api.call_action(self._did, ACTION_POWER_OFF["siid"], ACTION_POWER_OFF["aiid"], host=self._host):
             return False
         self._power = False
-        self._remember_pending_switch_property(PROP_POWER, POWER_STATE_STANDBY, POWER_COMMAND_GRACE_SECONDS)
+        self._remember_pending_write(PROP_POWER, POWER_STATE_STANDBY, POWER_COMMAND_GRACE_SECONDS)
         return True
 
     def set_mode(self, mode: int) -> bool:
-        return self._api.set_property(self._did, 2, 3, mode, self._host)
+        if not self._write(PROP_MODE, mode):
+            return False
+        self._mode = mode
+        self._remember_pending_write(PROP_MODE, mode)
+        return True
 
     def set_fan_speed(self, speed: int) -> bool:
-        speed = _as_int(speed, self._fan_speed or 1)
-        return self._api.set_property(self._did, 2, 4, max(1, min(5, speed)), self._host)
+        speed = max(1, min(5, _as_int(speed, self._fan_speed or 1)))
+        if not self._write(PROP_FAN_SPEED, speed):
+            return False
+        self._fan_speed = speed
+        self._remember_pending_write(PROP_FAN_SPEED, speed)
+        return True
 
     def set_fan_speed_percent(self, percent: int) -> bool:
         if percent <= 0:
             return self.turn_off()
         if self._mode != MODE_CUSTOM and not self.set_mode(MODE_CUSTOM):
             return False
-        return self.set_fan_speed(max(1, min(5, round(percent / 20))))
+        return self.set_fan_speed(round(percent / 20))
 
     def set_light_control(self, value: int) -> bool:
         if value not in LIGHT_CONTROL_VALUE_TO_OPTION:
             return False
-        return self._api.set_property(self._did, 2, 6, value, self._host)
+        return self._write(PROP_LIGHT_CONTROL, value)
 
     def set_voice_interaction_volume(self, value: int) -> bool:
         if value not in VOICE_INTERACTION_VOLUME_VALUE_TO_OPTION:
             return False
-        return self._api.set_property(self._did, 2, 5, value, self._host)
+        return self._write(PROP_VOICE_INTERACTION_VOLUME, value)
 
     def set_keypress_tone(self, enabled: bool) -> bool:
         return self._set_switch_property(PROP_KEYPRESS_TONE, enabled, "_keypress_tone")
@@ -604,7 +566,7 @@ class DreameAirPurifier:
         except (TypeError, ValueError):
             return False
         hours = max(TIMER_MIN_HOURS, min(TIMER_MAX_HOURS, hours))
-        return self._api.set_property(self._did, 6, 8, hours, self._host)
+        return self._write(PROP_TIMER, hours)
 
     def reset_filter(self) -> bool:
         return self._api.call_action(self._did, 4, 1, host=self._host)
