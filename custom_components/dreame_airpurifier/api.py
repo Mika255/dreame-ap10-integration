@@ -63,6 +63,9 @@ POLL_BATCHES = [
 ]
 
 # Mode mapping (verified)
+POWER_STATE_ON = 1
+POWER_STATE_STANDBY = 2
+
 MODE_AI_PURIFY = 0
 MODE_STRONG_PURIFICATION = 1
 MODE_SLEEP_PURIFICATION = 2
@@ -366,12 +369,8 @@ class DreameAirPurifier:
     def available(self): return self._available
     @property
     def is_on(self):
-        """Device is 'on' unless in sleep purification at speed 1."""
-        if not self._power:
-            return False
-        if self._mode == MODE_SLEEP_PURIFICATION and self._fan_speed <= 1:
-            return False
-        return True
+        """Return the real device power state."""
+        return self._power
     @property
     def mode(self): return MODE_NAMES.get(self._mode, f"Unknown ({self._mode})")
     @property
@@ -461,8 +460,10 @@ class DreameAirPurifier:
             return False
         self._available = True
         power = _as_int(all_values.get((2, 1)))
-        if power is not None:
-            self._power = power == 1
+        if power == POWER_STATE_ON:
+            self._power = True
+        elif power == POWER_STATE_STANDBY:
+            self._power = False
         self._mode = _as_int(all_values.get((2, 3)), self._mode)
         self._fan_speed = _as_int(all_values.get((2, 4)), self._fan_speed)
         self._voice_interaction_volume = _as_int(all_values.get((2, 5)), self._voice_interaction_volume)
@@ -515,13 +516,19 @@ class DreameAirPurifier:
         """Turn on by restoring AI Purify mode."""
         if self._power:
             return self.set_mode(MODE_AI_PURIFY)
-        self.toggle_power()
+        if not self.toggle_power():
+            return False
+        self._power = True
         return self.set_mode(MODE_AI_PURIFY)
 
     def turn_off(self) -> bool:
-        """Turn off by switching to Sleep Purification at minimum speed."""
-        self.set_mode(MODE_SLEEP_PURIFICATION)
-        return self.set_fan_speed(1)
+        """Turn off by switching the device to standby."""
+        if not self._power:
+            return True
+        if not self.toggle_power():
+            return False
+        self._power = False
+        return True
 
     def set_mode(self, mode: int) -> bool:
         return self._api.set_property(self._did, 2, 3, mode, self._host)

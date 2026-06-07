@@ -93,7 +93,7 @@ Implemented in this branch:
 
 | File | Change |
 | --- | --- |
-| `custom_components/dreame_airpurifier/api.py` | Added `PROP_DEVICE_LOCATION`; the current implementation may still need the new `6/7` Voice Control and `2/5` Voice Control Volume naming applied. |
+| `custom_components/dreame_airpurifier/api.py` | Added `PROP_DEVICE_LOCATION`, aligned Voice Control / Voice Control Volume naming, and changed HA power off to use the real standby action instead of Sleep Purification. |
 | `custom_components/dreame_airpurifier/sensor.py` | Added `Filter Days Left` and `Device Location` sensors. |
 | `custom_components/dreame_airpurifier/switch.py` | May still need alignment with the corrected `6/7` Voice Control mapping. |
 | `scripts/probe_property.py` | Added focused PAI reads and app-change tracing. |

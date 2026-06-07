@@ -7,7 +7,7 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 ## Features
 
 ### Fan Entity
-- **Power on/off** — "Off" uses Sleep Purification at minimum speed to keep the device cloud-connected
+- **Power on/off** — uses the AP-10 standby power action
 - **Mode** — AI Purify, Strong Purification, Sleep Purification, Custom Mode, Pet Purify
 - **Fan speed** — 5 speed levels, shown as 20/40/60/80/100% in Home Assistant
 - Setting fan speed uses Custom Mode with speed levels 1-5
@@ -61,11 +61,10 @@ No official Dreame integration exists for air purifiers in Home Assistant.
 
 ### Power Behavior
 
-The AP-10 enters a deep standby when powered off that disconnects it from the cloud entirely. Neither the Dreamehome app nor this integration can wake it remotely. To keep the device controllable:
+The AP-10 reports its real power state as `siid=2, piid=1`, with `1=on` and `2=standby`. Direct writes to this property time out, so the integration uses the AP-10 power action instead:
 
-- **"Turn off" in HA** switches to Sleep Purification at the lowest fan speed
-- **"Turn on" in HA** switches back to AI Purify
-- Avoid using the physical power button to turn it off if you want remote control to keep working
+- **"Turn off" in HA** switches the purifier to standby
+- **"Turn on" in HA** wakes the purifier and restores AI Purify
 
 ### Cloud Polling
 
@@ -115,7 +114,7 @@ uv run --with requests python3 scripts/probe_property.py --country eu --username
 ## Troubleshooting
 
 - **Login fails?** Verify your credentials work in the Dreamehome app. The integration uses the same login.
-- **Device unavailable?** Make sure the purifier is powered on, not in deep standby. Check that it shows online in the Dreamehome app.
+- **Device unavailable?** Check that it shows online in the Dreamehome app and that the selected region matches your account.
 - **Commands not working?** Check HA logs under Developer Tools -> Logs, search for `dreame_airpurifier`.
 - **State not updating?** The integration polls every 30 seconds. Cloud state can sometimes lag behind physical changes.
 
