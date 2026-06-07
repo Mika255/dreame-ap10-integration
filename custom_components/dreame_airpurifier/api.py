@@ -101,8 +101,12 @@ VOICE_INTERACTION_VOLUME_VALUE_TO_OPTION = {
 TIMER_MIN_HOURS = 0
 TIMER_MAX_HOURS = 12
 
-# Power: MUST use toggle action (set_properties times out on siid 2 piid 1)
-ACTION_TOGGLE_POWER = {"siid": 2, "aiid": 3}
+# Power: direct set_properties on siid 2 piid 1 does not work (no-op/timeout).
+# Verified working actions (see AP10-Power-Toggle-Investigation.md):
+#   ON  -> action siid=2 aiid=1 with input [{"piid": 1, "value": 1}]
+#   OFF -> action siid=2 aiid=3 (no input) puts the device into standby
+ACTION_POWER_ON = {"siid": 2, "aiid": 1, "piid": 1, "value": POWER_STATE_ON}
+ACTION_POWER_OFF = {"siid": 2, "aiid": 3}
 
 
 def _as_dict(value) -> dict:
@@ -509,23 +513,30 @@ class DreameAirPurifier:
         self._timer_hours = _as_int(all_values.get((6, 8)), self._timer_hours)
         return True
 
-    def toggle_power(self) -> bool:
-        return self._api.call_action(self._did, ACTION_TOGGLE_POWER["siid"], ACTION_TOGGLE_POWER["aiid"], host=self._host)
-
     def turn_on(self) -> bool:
-        """Turn on by restoring AI Purify mode."""
+        """Wake the device from standby via the power-on action.
+
+        The device restores its previous mode and fan level on wake, matching
+        the Dreamehome app, so we do not force a mode here.
+        """
         if self._power:
-            return self.set_mode(MODE_AI_PURIFY)
-        if not self.toggle_power():
+            return True
+        if not self._api.call_action(
+            self._did,
+            ACTION_POWER_ON["siid"],
+            ACTION_POWER_ON["aiid"],
+            params=[{"piid": ACTION_POWER_ON["piid"], "value": ACTION_POWER_ON["value"]}],
+            host=self._host,
+        ):
             return False
         self._power = True
-        return self.set_mode(MODE_AI_PURIFY)
+        return True
 
     def turn_off(self) -> bool:
         """Turn off by switching the device to standby."""
         if not self._power:
             return True
-        if not self.toggle_power():
+        if not self._api.call_action(self._did, ACTION_POWER_OFF["siid"], ACTION_POWER_OFF["aiid"], host=self._host):
             return False
         self._power = False
         return True
